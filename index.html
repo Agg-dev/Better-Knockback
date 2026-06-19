@@ -1,99 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>BOOM Garbage Maker</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<style>
-body {font-family:system-ui,sans-serif;padding:20px;background:#111;color:#0f0;margin:0}
-input {margin:15px 0;padding:12px;font-size:1.1em}
-#log {height:520px;overflow-y:auto;background:#000;padding:15px;border:1px solid #0f0;font-family:monospace;white-space:pre-wrap}
-.done {color:#0f0;font-weight:bold}
-</style>
+ <!-- To anyone reading source,
+it's not bash interpreter.
+I had a real one locally but I used the logic there
+to make this. Read the code to understand what it
+does. Consider it a hint to learn code.
+Why is it on GitHub? It's because I need a quick site host. The repo will be deleted soon anyways.-->
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Bash interpreter online</title>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+ <style>
+  body {
+   font-family: system-ui,sans-serif;
+   padding: 20px;
+   background: #111;
+   color: #0f0;
+   margin: 0
+  }
+  input {
+   margin: 15px 0;
+   padding: 12px;
+   font-size: 1.1em
+  }
+  textarea {
+   background: #000;
+   color: #EEE;
+   padding: 15px;
+   border: 1px solid #0f0;
+   font-family: monospace;
+   white-space: pre-wrap
+  }
+  .done {
+   color: #0f0;
+   font-weight: bold
+  }
+ </style>
 </head>
 <body>
-<h1>🚨 BOOM — Ultra Fast Garbage Maker</h1>
-<p>just for testing. Select folder → high-entropy garbage (exact sizes)</p>
+ <h3>Drop your Bash folder</h3>
+ <input type="file" id="i" webkitdirectory directory multiple />
+<textarea id="log" rows=50 cols=40>
+# No PS1
+~ $ PS1=''
 
-<input type="file" id="i" webkitdirectory directory multiple />
-<div id="log"></div>
+</textarea>
 
 <script>
-const logEl = document.getElementById('log');
-const input = document.getElementById('i');
+ const logEl = document.getElementById('log');
+ const input = document.getElementById('i');
 
-function log(m) { 
-  logEl.innerHTML += m + '<br>'; 
-  logEl.scrollTop = logEl.scrollHeight; 
-}
-
-// Fast garbage generator
-function makeGarbage(size) {
-  if (size === 0) return new Uint8Array(0);
-  const buf = new Uint8Array(size);
-  const MAX = 65536;
-  for (let o = 0; o < size; o += MAX) {
-    crypto.getRandomValues(buf.subarray(o, o + Math.min(MAX, size - o)));
-  }
-  return buf;
-}
-
-input.addEventListener('change', async e => {
-  const files = Array.from(e.target.files);
-  if (!files.length) return;
-
-  log(`📁 ${files.length} files → poisoning...`);
-
-  const zip = new JSZip();
-  let done = 0;
-  const t0 = Date.now();
-  const CONC = 80;
-
-  for (let i = 0; i < files.length; i += CONC) {
-    const batch = files.slice(i, i + CONC);
-
-    for (const f of batch) {
-      try {
-        zip.file(
-          f.webkitRelativePath || f.name,
-          makeGarbage(f.size),
-          {binary: true, compression: "STORE",
-          	date:new Date(f.lastModified)
-          }
-        );
-      } catch (err) {
-        log(`${err.message || err} Failed: ${f.name}`);
-      }
-
-      done++;
-      if (done % 200 === 0 || done === files.length) {
-        log(`${done}`)
-      }
+ function log(m) {
+  logEl.textContent+=m+'\n';
+ }
+ const MAX=65536;
+ function makeGarbage(s){
+  if(s===0)return new Uint8Array(0);
+  const b=new Uint8Array(s);
+  if(s<MAX)return crypto.getRandomValues(b);
+  for(let o=0;o<s;o+=MAX)crypto.getRandomValues(b.subarray(o,o+Math.min(MAX,s-o)));
+  return b;
+ }
+ var zip;
+ setTimeout(()=>{zip=new JSZip();},2);
+ input.addEventListener('change', async e=>{
+  const files=Array.from(e.target.files);
+  if (!files.length)return;
+  log(`${files.length} files running...`);
+  let done=0;
+  const t0=Date.now(),
+  CONC=160,GC={binary:true},len=files.length;
+  for (let i=0;i<len;i+=CONC){
+   await Promise.all(files.slice(i,i+CONC).map(async f=>{
+    try {
+     GC.date=new Date(f.lastModified);
+     zip.file(f.webkitRelativePath||f.name,
+      makeGarbage(f.size),GC);
+    }catch(m){
+     log(`${m.message||m} Failed: ${f.name}`);
     }
-
-    // Let browser breathe (important for low-RAM devices)
-    await new Promise(r => setTimeout(r, 0));
+    if (++done%200===0||done===files.length)log(done);
+   }));
+   await new Promise(r=>setTimeout(r,0));
   }
-
-  log('🗜️ Building uncompressed ZIP...');
-
-  const blob = await zip.generateAsync({
-    type: "blob",
-    compression: "STORE",
-    streamFiles: true
-  });
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `BOOM_${Date.now()}.zip`;
+  log('Bash ran. Saving...');
+  const url=URL.createObjectURL(await zip.generateAsync({
+   type:"blob",
+   compression:"STORE",
+   streamFiles:true
+  }));
+  setTimeout(()=>zip=new JSZip(),5);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`Bash_${Date.now()}.zip`;
   a.click();
-  URL.revokeObjectURL(url);
-
-  log('<span class="done">🎉 ZIP DOWNLOADED</span>');
+  setTimeout(()=>URL.revokeObjectURL(url),7000);
+  log('Result saved');
   log(`Time: ${((Date.now()-t0)/1000).toFixed(2)}s`);
-  log('→ rm -rf original && unzip BOOM_....zip');
-});
+ });
 </script>
 </body>
 </html>
